@@ -7,7 +7,7 @@ This repository acts as a code example from me, Felix Beckmann. It is strongly s
 ## Files
 | File | Content                                                             |
 |---|---------------------------------------------------------------------|
-| `lj.py` | energy, forces, integrator, `run`, energy minimisation, observables |
+| `lj.py` | energy, forces, integrator, `run`, observables |
 | `test_lj.py` | tests (`pytest`)                                                    |
 | `demo.ipynb` | Explanation and execution of the code                               |
 | `PLAN.md` | design notes from the implementation process                        |

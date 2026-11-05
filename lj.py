@@ -20,8 +20,6 @@ Time is measured in the unit that follows from these three, with no
 conversion provided. All physical constants are passed around in a plain
 ``atom_params`` dict (see ``ARGON``) so that no function hard-codes sigma,
 epsilon or the mass.
-
-Functions marked ``TODO(you)`` are intentionally left unimplemented.
 """
 
 from __future__ import annotations
@@ -88,7 +86,7 @@ class Trajectory(NamedTuple):
 
 
 # --------------------------------------------------------------------------
-# Core physics (TODO(you))
+# Core physics
 # --------------------------------------------------------------------------
 
 
@@ -112,19 +110,12 @@ def pair_energy(r: Array, atom_params: AtomParams) -> Array:
     Array
         4 * eps * [(sigma/r)**12 - (sigma/r)**6], same shape as ``r``.
     """
-    # TODO(you)
-    raise NotImplementedError
+    ratio_sigma_r_6 = (atom_params["sigma"]/r)**6 # original implementation, saves less resources in jax than in naive impelmentations
+    return (4 * atom_params["epsilon"] * (ratio_sigma_r_6**2 - ratio_sigma_r_6))
 
 
-def total_energy(pos: Array, box: float, atom_params: AtomParams) -> Array:
+def potential_energy(pos: Array, box: float, atom_params: AtomParams) -> Array:
     """Total potential energy of all particle pairs (minimum image).
-
-    Sum ``pair_energy`` over all unique pairs i < j, using
-    :func:`minimum_image` for the separations.
-
-    Hints: ``jnp.triu_indices(N, k=1)`` gives the pairs without the diagonal,
-    so no r = 0 term (which would give NaN gradients) appears.
-
     Parameters
     ----------
     pos : Array, shape (N,)
@@ -137,8 +128,10 @@ def total_energy(pos: Array, box: float, atom_params: AtomParams) -> Array:
     Array
         Scalar potential energy.
     """
-    # TODO(you)
-    raise NotImplementedError
+    N = pos.shape[0] # extract number of particles
+    i, j = jnp.triu_indices(N, k=1) # get all pairwise indices except for self interaction (i,i)
+    d = minimum_image(pos[i] - pos[j], box) # calculate distances with PBC
+    return jnp.sum(pair_energy(jnp.abs(d), atom_params)) # sum all pairwise energy contributions
 
 
 def forces(pos: Array, box: float, atom_params: AtomParams) -> Array:
@@ -148,14 +141,11 @@ def forces(pos: Array, box: float, atom_params: AtomParams) -> Array:
     -------
     Array, shape (N,)
     """
-    # TODO(you): one line with jax.grad
-    raise NotImplementedError
+    return -1 * jax.grad(potential_energy, argnums=0)(pos, box, atom_params)
 
 
 def lj_force_analytic(r: Array, atom_params: AtomParams) -> Array:
     """Analytic LJ pair force along the separation, F(r) = -dU/dr.
-
-    Positive values are repulsive. Used as a reference for :func:`forces`.
 
     Parameters
     ----------
@@ -168,12 +158,12 @@ def lj_force_analytic(r: Array, atom_params: AtomParams) -> Array:
     Array
         24 * eps / r * [2 (sigma/r)**12 - (sigma/r)**6].
     """
-    # TODO(you)
-    raise NotImplementedError
+    ratio_sigma_r_6 = (atom_params["sigma"]/r)**6 # original implementation, saves less resources in jax than in naive impelmentations
+    return 24 * atom_params["epsilon"]/r * (2*ratio_sigma_r_6**2 - ratio_sigma_r_6)
 
 
-def velocity_verlet_step(state: State, box: float, dt: float, atom_params: AtomParams) -> State:
-    """Advance the system by one velocity-Verlet step.
+def velocity_verlet_step(initial_state: State, box: float, dt: float, atom_params: AtomParams) -> State:
+    """Advance the system by one velocity-Verlet step(half step formulation).
 
     1. v(t + dt/2) = v(t) + dt/2 * F(t) / m
     2. x(t + dt)   = x(t) + dt * v(t + dt/2)
@@ -182,7 +172,7 @@ def velocity_verlet_step(state: State, box: float, dt: float, atom_params: AtomP
 
     Parameters
     ----------
-    state : State
+    initial_state : State
         Current positions, velocities and forces F(t).
     box : float
     dt : float
@@ -194,32 +184,23 @@ def velocity_verlet_step(state: State, box: float, dt: float, atom_params: AtomP
     State
         State at t + dt, including the new forces.
     """
-    # TODO(you)
-    raise NotImplementedError
+    vel_half = initial_state.vel + dt/2 * initial_state.force/atom_params["mass"]
+    pos = initial_state.pos + dt * vel_half
+    force = forces(pos=pos, box=box, atom_params=atom_params)
+    vel_full = vel_half + dt/2 * force/atom_params["mass"]
+
+    return State(pos=pos, vel=vel_full, force=force)
 
 
+@jax.jit(static_argnames=("n_steps",)) # allows compilation if n_steps is constant
 def run(
-    state: State, box: float, dt: float, n_steps: int, atom_params: AtomParams
+    initial_state: State, box: float, dt: float, n_steps: int, atom_params: AtomParams
 ) -> tuple[State, Trajectory]:
-    """Integrate the equations of motion for ``n_steps`` steps (NVE).
-
-    Suggested steps:
-
-    1. Define a scan body ``step(state, _)`` that calls
-       :func:`velocity_verlet_step` and returns ``(new_state, record)``, with
-       the record holding positions and the kinetic, potential and total
-       energies (:func:`kinetic_energy`, :func:`total_energy`).
-    2. Call ``jax.lax.scan(step, state, None, length=n_steps)``.
-    3. Return the final state and a :class:`Trajectory`.
-    4. Compile with ``jax.jit(run, static_argnames=("n_steps",))``.
-
-    Positions stay unwrapped during the run; wrap them only for plotting or
-    histograms (``jnp.mod(pos, box)``).
+    """Integrate the equations of motion for ``n_steps`` steps (NVE) in a jit-way.
 
     Parameters
     ----------
-    state : State
-        Initial state, e.g. from :func:`init_state`.
+    initial_state : State
     box : float
     dt : float
     n_steps : int
@@ -230,8 +211,29 @@ def run(
     final_state : State
     trajectory : Trajectory
     """
-    # TODO(you)
-    raise NotImplementedError
+
+    # scan calls step(carry, x) with exactly two arguments; box, dt and
+    # atom_params are taken from the enclosing scope.
+    def step(state: State, _) -> tuple[State, tuple[Array, Array, Array]]:
+        new_state = velocity_verlet_step(initial_state=state, box=box, dt=dt, atom_params=atom_params) # refer to values from run's signature
+
+        kinetic_energy_val = kinetic_energy(vel=new_state.vel, atom_params=atom_params)
+        potential_energy_val = potential_energy(pos=new_state.pos, box=box, atom_params=atom_params)
+
+        # (new carry, record for this step)
+        return new_state, (new_state.pos, kinetic_energy_val, potential_energy_val)
+
+    # scan stacks the records along a new first axis: pos (n_steps, N), energies (n_steps,)
+    carry_state, (pos_vals, kinetic_energy_vals, potential_energy_vals) = jax.lax.scan(
+        step, initial_state, None, length=n_steps
+    )
+
+    return carry_state, Trajectory(
+        pos=pos_vals,
+        kinetic=kinetic_energy_vals,
+        potential=potential_energy_vals,
+        total=kinetic_energy_vals + potential_energy_vals,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -251,7 +253,7 @@ def temperature(vel: Array, atom_params: AtomParams) -> Array:
     (centre of mass fixed). Energies are in Kelvin, so k_B = 1.
     """
     n = vel.shape[0]
-    return 2.0 * kinetic_energy(vel, atom_params) / (n - 1)
+    return 2.0 * kinetic_energy(vel, atom_params) / (n - 1) # def of instantaneous T
 
 
 def init_lattice(n: int, box: float, jitter: float, key: Array) -> Array:
@@ -265,7 +267,7 @@ def init_lattice(n: int, box: float, jitter: float, key: Array) -> Array:
     Parameters
     ----------
     n : int
-        Number of particles.
+        Number of particles per unit box.
     box : float
         Box length; the spacing is ``box / n``.
     jitter : float
@@ -278,82 +280,14 @@ def init_lattice(n: int, box: float, jitter: float, key: Array) -> Array:
     -------
     Array, shape (n,)
     """
-    spacing = box / n
-    base = spacing * jnp.arange(n)
+    base = jnp.linspace(start=0, stop=box, num=n, endpoint=False)
     shift = jax.random.uniform(key, (n,), minval=-jitter, maxval=jitter)
-    return base + spacing * shift
+    return base + box / n * shift
 
 
 def init_state(pos: Array, box: float, atom_params: AtomParams) -> State:
     """Build a :class:`State` with zero velocities and the forces at ``pos``."""
     return State(pos=pos, vel=jnp.zeros_like(pos), force=forces(pos, box, atom_params))
-
-
-@jax.jit(static_argnames=("max_iter",))
-def _minimize_loop(
-    pos: Array,
-    box: float,
-    atom_params: AtomParams,
-    max_iter: int,
-    tol: float,
-    alpha: float,
-    cap: float,
-) -> tuple[Array, Array]:
-    def cond(carry):
-        _, i, fmax = carry
-        return (i < max_iter) & (fmax > tol)
-
-    def body(carry):
-        x, i, _ = carry
-        f = forces(x, box, atom_params)
-        dx = jnp.clip(alpha * f, -cap, cap)
-        return x + dx, i + 1, jnp.max(jnp.abs(f))
-
-    x, n_iter, _ = jax.lax.while_loop(cond, body, (pos, 0, jnp.inf))
-    return x, n_iter
-
-
-def minimize_energy(
-    pos: Array,
-    box: float,
-    atom_params: AtomParams,
-    tol: float = 1e-8,
-    max_iter: int = 20_000,
-    step: float = 0.005,
-    max_disp: float = 0.1,
-) -> tuple[Array, Array]:
-    """Energy minimisation by steepest descent.
-
-    Repeats ``x <- x + step * F(x)`` until the largest force component is
-    below ``tol``. This is a first-order downhill walk with no momentum,
-    unlike the dynamics of :func:`run`. It finds the nearest *local* minimum.
-
-    Parameters
-    ----------
-    pos : Array, shape (N,)
-    box : float
-    atom_params : dict
-    tol : float
-        Convergence threshold on max|F|, in units of epsilon / sigma.
-    max_iter : int
-    step : float
-        Step size alpha, in units of sigma**2 / epsilon. Must stay below
-        about 2 / (largest force constant); 0.005 is safe for chains.
-    max_disp : float
-        Cap on the displacement per step, in units of sigma. Protects against
-        overshooting into the r**-12 wall.
-
-    Returns
-    -------
-    pos : Array, shape (N,)
-        Relaxed positions.
-    n_iter : Array
-        Number of iterations used.
-    """
-    sigma, eps = atom_params["sigma"], atom_params["epsilon"]
-    return _minimize_loop(
-        pos, box, atom_params, max_iter, tol * eps / sigma, step * sigma**2 / eps, max_disp * sigma
-    )
 
 
 # --------------------------------------------------------------------------

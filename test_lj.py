@@ -33,17 +33,17 @@ def test_energy_minimum_is_minus_epsilon():
     assert lj.pair_energy(R_MIN, P) == pytest.approx(-EPS, rel=1e-12)
 
 
-def test_total_energy_matches_pair_energy_for_two_particles():
+def test_potential_energy_matches_pair_energy_for_two_particles():
     r = 1.3 * SIGMA
-    assert lj.total_energy(pair(r), BOX, P) == pytest.approx(lj.pair_energy(r, P), rel=1e-12)
+    assert lj.potential_energy(pair(r), BOX, P) == pytest.approx(lj.pair_energy(r, P), rel=1e-12)
 
 
 def test_translation_invariance_under_box_shift():
     pos = jnp.array([0.0, 1.3, 2.9, 4.4]) * SIGMA
     box = 6 * SIGMA
     shifted = pos.at[1].add(box)  # one particle moved by a full box length
-    assert float(lj.total_energy(shifted, box, P)) == pytest.approx(
-        float(lj.total_energy(pos, box, P)), rel=1e-10
+    assert float(lj.potential_energy(shifted, box, P)) == pytest.approx(
+        float(lj.potential_energy(pos, box, P)), rel=1e-10
     )
 
 
@@ -83,15 +83,6 @@ def test_run_conserves_energy_for_bound_pair():
     drift = jnp.max(jnp.abs(traj.total - traj.total[0])) / abs(traj.total[0])
     assert drift < 1e-3
     assert traj.pos.shape == (5000, 2)
-
-
-# --- minimisation ---------------------------------------------------------
-
-
-@pytest.mark.parametrize("r0_over_sigma", [0.95, 1.05, 1.3, 1.8])
-def test_minimize_energy_pair_reaches_r_min(r0_over_sigma):
-    pos, _ = lj.minimize_energy(pair(r0_over_sigma * SIGMA), BOX, P)
-    assert float(pos[1] - pos[0]) == pytest.approx(R_MIN, rel=1e-6)
 
 
 # --- observables (independent of the TODO functions) ----------------------
