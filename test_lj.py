@@ -1,7 +1,4 @@
 """Tests for lj.py.
-
-Tests of the TODO(you) functions fail with NotImplementedError until those
-functions are written.
 """
 
 import jax
@@ -40,7 +37,7 @@ def test_potential_energy_matches_pair_energy_for_two_particles():
 
 def test_translation_invariance_under_box_shift():
     pos = jnp.array([0.0, 1.3, 2.9, 4.4]) * SIGMA
-    box = 6 * SIGMA
+    box = 6 * SIGMA # create small box
     shifted = pos.at[1].add(box)  # one particle moved by a full box length
     assert float(lj.potential_energy(shifted, box, P)) == pytest.approx(
         float(lj.potential_energy(pos, box, P)), rel=1e-10
@@ -81,11 +78,11 @@ def test_run_conserves_energy_for_bound_pair():
     state = lj.init_state(pair(1.3 * SIGMA), BOX, P)  # E = U(1.3 sigma) < 0
     _, traj = lj.run(state, BOX, 0.002, 5000, P)
     drift = jnp.max(jnp.abs(traj.total - traj.total[0])) / abs(traj.total[0])
-    assert drift < 1e-3
-    assert traj.pos.shape == (5000, 2)
+    assert drift < 1e-3 # make sure energy deviation is small
+    assert traj.pos.shape == (5000, 2) # assert trajectory shape is correct
 
 
-# --- observables (independent of the TODO functions) ----------------------
+# --- observables ----------------------
 
 
 def test_g_of_r_is_one_for_uniform_random_positions():
@@ -100,5 +97,5 @@ def test_init_lattice_is_reproducible_and_inside_jitter():
     key = jax.random.PRNGKey(1)
     a = lj.init_lattice(10, 20.0, 0.1, key)
     b = lj.init_lattice(10, 20.0, 0.1, key)
-    np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
-    assert jnp.max(jnp.abs(a - 2.0 * jnp.arange(10))) <= 0.1 * 2.0 + 1e-12
+    np.testing.assert_array_equal(np.asarray(a), np.asarray(b)) # check reproducibility with same random key
+    assert jnp.max(jnp.abs(a - 2.0 * jnp.arange(10))) <= 0.1 * 2.0 + 1e-12 # make sure displacement is not beyond 10 % of spacing
