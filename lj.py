@@ -18,8 +18,8 @@ The code works in an "Angstrom - Kelvin - atomic mass unit" system:
 
 Time is measured in the unit that follows from these three, with no
 conversion provided. All physical constants are passed around in a plain
-``params`` dict (see ``ARGON``) so that no function hard-codes sigma, epsilon
-or the mass.
+``atom_params`` dict (see ``ARGON``) so that no function hard-codes sigma,
+epsilon or the mass.
 
 Functions marked ``TODO(you)`` are intentionally left unimplemented.
 """
@@ -35,13 +35,13 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 Array = jax.Array
-Params = dict[str, float]
+AtomParams = dict[str, float]
 
 # --------------------------------------------------------------------------
 # Parameters and units
 # --------------------------------------------------------------------------
 
-ARGON: Params = {
+ARGON: AtomParams = {
     "sigma": 3.405,  # Angstrom, LJ length scale
     "epsilon": 119.8,  # Kelvin (epsilon / k_B), LJ energy scale
     "mass": 39.948,  # u
@@ -97,14 +97,14 @@ def minimum_image(d: Array, box: float) -> Array:
     return d - box * jnp.round(d / box)
 
 
-def pair_energy(r: Array, params: Params) -> Array:
+def pair_energy(r: Array, atom_params: AtomParams) -> Array:
     """Lennard-Jones energy of a pair at separation ``r``.
 
     Parameters
     ----------
     r : Array
         Pair separation(s), r > 0.
-    params : dict
+    atom_params : dict
         Must contain ``sigma`` and ``epsilon``.
 
     Returns
@@ -116,7 +116,7 @@ def pair_energy(r: Array, params: Params) -> Array:
     raise NotImplementedError
 
 
-def total_energy(pos: Array, box: float, params: Params) -> Array:
+def total_energy(pos: Array, box: float, atom_params: AtomParams) -> Array:
     """Total potential energy of all particle pairs (minimum image).
 
     Sum ``pair_energy`` over all unique pairs i < j, using
@@ -130,7 +130,7 @@ def total_energy(pos: Array, box: float, params: Params) -> Array:
     pos : Array, shape (N,)
     box : float
         Length of the periodic box.
-    params : dict
+    atom_params : dict
 
     Returns
     -------
@@ -141,7 +141,7 @@ def total_energy(pos: Array, box: float, params: Params) -> Array:
     raise NotImplementedError
 
 
-def forces(pos: Array, box: float, params: Params) -> Array:
+def forces(pos: Array, box: float, atom_params: AtomParams) -> Array:
     """Forces on all particles, F = -dU/dx, via automatic differentiation.
 
     Returns
@@ -152,7 +152,7 @@ def forces(pos: Array, box: float, params: Params) -> Array:
     raise NotImplementedError
 
 
-def lj_force_analytic(r: Array, params: Params) -> Array:
+def lj_force_analytic(r: Array, atom_params: AtomParams) -> Array:
     """Analytic LJ pair force along the separation, F(r) = -dU/dr.
 
     Positive values are repulsive. Used as a reference for :func:`forces`.
@@ -161,7 +161,7 @@ def lj_force_analytic(r: Array, params: Params) -> Array:
     ----------
     r : Array
         Pair separation(s), r > 0.
-    params : dict
+    atom_params : dict
 
     Returns
     -------
@@ -172,7 +172,7 @@ def lj_force_analytic(r: Array, params: Params) -> Array:
     raise NotImplementedError
 
 
-def velocity_verlet_step(state: State, box: float, dt: float, params: Params) -> State:
+def velocity_verlet_step(state: State, box: float, dt: float, atom_params: AtomParams) -> State:
     """Advance the system by one velocity-Verlet step.
 
     1. v(t + dt/2) = v(t) + dt/2 * F(t) / m
@@ -187,7 +187,7 @@ def velocity_verlet_step(state: State, box: float, dt: float, params: Params) ->
     box : float
     dt : float
         Time step in the time unit of the unit system (see module docstring).
-    params : dict
+    atom_params : dict
 
     Returns
     -------
@@ -199,7 +199,7 @@ def velocity_verlet_step(state: State, box: float, dt: float, params: Params) ->
 
 
 def run(
-    state: State, box: float, dt: float, n_steps: int, params: Params
+    state: State, box: float, dt: float, n_steps: int, atom_params: AtomParams
 ) -> tuple[State, Trajectory]:
     """Integrate the equations of motion for ``n_steps`` steps (NVE).
 
@@ -223,7 +223,7 @@ def run(
     box : float
     dt : float
     n_steps : int
-    params : dict
+    atom_params : dict
 
     Returns
     -------
@@ -239,19 +239,19 @@ def run(
 # --------------------------------------------------------------------------
 
 
-def kinetic_energy(vel: Array, params: Params) -> Array:
+def kinetic_energy(vel: Array, atom_params: AtomParams) -> Array:
     """Total kinetic energy, 0.5 * m * sum(v**2)."""
-    return 0.5 * params["mass"] * jnp.sum(vel**2)
+    return 0.5 * atom_params["mass"] * jnp.sum(vel**2)
 
 
-def temperature(vel: Array, params: Params) -> Array:
+def temperature(vel: Array, atom_params: AtomParams) -> Array:
     """Instantaneous temperature in Kelvin from the kinetic energy.
 
     Uses N - 1 degrees of freedom because the total momentum is conserved
     (centre of mass fixed). Energies are in Kelvin, so k_B = 1.
     """
     n = vel.shape[0]
-    return 2.0 * kinetic_energy(vel, params) / (n - 1)
+    return 2.0 * kinetic_energy(vel, atom_params) / (n - 1)
 
 
 def init_lattice(n: int, box: float, jitter: float, key: Array) -> Array:
@@ -284,14 +284,20 @@ def init_lattice(n: int, box: float, jitter: float, key: Array) -> Array:
     return base + spacing * shift
 
 
-def init_state(pos: Array, box: float, params: Params) -> State:
+def init_state(pos: Array, box: float, atom_params: AtomParams) -> State:
     """Build a :class:`State` with zero velocities and the forces at ``pos``."""
-    return State(pos=pos, vel=jnp.zeros_like(pos), force=forces(pos, box, params))
+    return State(pos=pos, vel=jnp.zeros_like(pos), force=forces(pos, box, atom_params))
 
 
 @jax.jit(static_argnames=("max_iter",))
 def _minimize_loop(
-    pos: Array, box: float, params: Params, max_iter: int, tol: float, alpha: float, cap: float
+    pos: Array,
+    box: float,
+    atom_params: AtomParams,
+    max_iter: int,
+    tol: float,
+    alpha: float,
+    cap: float,
 ) -> tuple[Array, Array]:
     def cond(carry):
         _, i, fmax = carry
@@ -299,7 +305,7 @@ def _minimize_loop(
 
     def body(carry):
         x, i, _ = carry
-        f = forces(x, box, params)
+        f = forces(x, box, atom_params)
         dx = jnp.clip(alpha * f, -cap, cap)
         return x + dx, i + 1, jnp.max(jnp.abs(f))
 
@@ -310,7 +316,7 @@ def _minimize_loop(
 def minimize_energy(
     pos: Array,
     box: float,
-    params: Params,
+    atom_params: AtomParams,
     tol: float = 1e-8,
     max_iter: int = 20_000,
     step: float = 0.005,
@@ -326,7 +332,7 @@ def minimize_energy(
     ----------
     pos : Array, shape (N,)
     box : float
-    params : dict
+    atom_params : dict
     tol : float
         Convergence threshold on max|F|, in units of epsilon / sigma.
     max_iter : int
@@ -344,9 +350,9 @@ def minimize_energy(
     n_iter : Array
         Number of iterations used.
     """
-    sigma, eps = params["sigma"], params["epsilon"]
+    sigma, eps = atom_params["sigma"], atom_params["epsilon"]
     return _minimize_loop(
-        pos, box, params, max_iter, tol * eps / sigma, step * sigma**2 / eps, max_disp * sigma
+        pos, box, atom_params, max_iter, tol * eps / sigma, step * sigma**2 / eps, max_disp * sigma
     )
 
 
@@ -389,7 +395,7 @@ def g_of_r(
     return r, g
 
 
-def predicted_density(r: Array, energy: float, params: Params) -> Array:
+def predicted_density(r: Array, energy: float, atom_params: AtomParams) -> Array:
     """Predicted time-density P(r) of a bound pair with relative energy ``energy``.
 
     For two particles with the centre of mass at rest, the relative motion
@@ -407,23 +413,23 @@ def predicted_density(r: Array, energy: float, params: Params) -> Array:
         Fine, increasing grid of separations.
     energy : float
         Total energy of the pair (kinetic + potential).
-    params : dict
+    atom_params : dict
 
     Returns
     -------
     Array
         Probability density with ``trapezoid(P, r) = 1``.
     """
-    mu = params["mass"] / 2.0
-    kin = energy - pair_energy(r, params)
+    mu = atom_params["mass"] / 2.0
+    kin = energy - pair_energy(r, atom_params)
     inside = kin > 0
     p = jnp.where(inside, 1.0 / jnp.sqrt(2.0 * jnp.where(inside, kin, 1.0) / mu), 0.0)
     return p / jnp.trapezoid(p, r)
 
 
-def boltzmann_gr(r: Array, temp: float, params: Params) -> Array:
+def boltzmann_gr(r: Array, temp: float, atom_params: AtomParams) -> Array:
     """Low-density limit of the radial distribution function, exp(-U(r) / T).
 
     Energies are in Kelvin, so k_B = 1 and ``temp`` is in Kelvin.
     """
-    return jnp.exp(-pair_energy(r, params) / temp)
+    return jnp.exp(-pair_energy(r, atom_params) / temp)
