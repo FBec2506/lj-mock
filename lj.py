@@ -291,7 +291,7 @@ def init_state(pos: Array, box: float, atom_params: AtomParams) -> State:
 
 
 # --------------------------------------------------------------------------
-# Observables and theory
+# Observables
 # --------------------------------------------------------------------------
 
 
@@ -322,48 +322,8 @@ def g_of_r(
     r_max = box / 2 if r_max is None else r_max
     i, j = jnp.triu_indices(n, k=1)
     d = jnp.abs(minimum_image(pos_traj[:, i] - pos_traj[:, j], box))
-    counts, edges = jnp.histogram(d.ravel(), bins=n_bins, range=(0.0, r_max))
+    counts, edges = jnp.histogram(d.ravel(), bins=n_bins, range=(0.0, r_max)) # flatten distance array and produce histogram
     dr = edges[1] - edges[0]
-    r = 0.5 * (edges[1:] + edges[:-1])
+    r = 0.5 * (edges[1:] + edges[:-1]) # get bin centers
     g = counts * box / (n_frames * n * (n - 1) * dr)
     return r, g
-
-
-def predicted_density(r: Array, energy: float, atom_params: AtomParams) -> Array:
-    """Predicted time-density P(r) of a bound pair with relative energy ``energy``.
-
-    For two particles with the centre of mass at rest, the relative motion
-    has reduced mass mu = m / 2 and
-
-        P(r) ~ 1 / |dr/dt| = 1 / sqrt(2 * (E - U(r)) / mu)
-
-    between the turning points (zero outside). Normalised on the grid ``r``.
-    The turning points are integrable singularities, so compare against a
-    histogram with moderately coarse bins.
-
-    Parameters
-    ----------
-    r : Array
-        Fine, increasing grid of separations.
-    energy : float
-        Total energy of the pair (kinetic + potential).
-    atom_params : dict
-
-    Returns
-    -------
-    Array
-        Probability density with ``trapezoid(P, r) = 1``.
-    """
-    mu = atom_params["mass"] / 2.0
-    kin = energy - pair_energy(r, atom_params)
-    inside = kin > 0
-    p = jnp.where(inside, 1.0 / jnp.sqrt(2.0 * jnp.where(inside, kin, 1.0) / mu), 0.0)
-    return p / jnp.trapezoid(p, r)
-
-
-def boltzmann_gr(r: Array, temp: float, atom_params: AtomParams) -> Array:
-    """Low-density limit of the radial distribution function, exp(-U(r) / T).
-
-    Energies are in Kelvin, so k_B = 1 and ``temp`` is in Kelvin.
-    """
-    return jnp.exp(-pair_energy(r, atom_params) / temp)
