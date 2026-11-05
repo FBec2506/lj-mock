@@ -1,4 +1,4 @@
-"""Minimal 1D Lennard-Jones molecular dynamics in JAX (argon).
+"""Minimal 1D Lennard-Jones molecular dynamics in JAX.
 
 The system is N identical, uncharged particles on a periodic line of length
 ``box`` interacting through the 12-6 Lennard-Jones potential,
@@ -10,16 +10,11 @@ of a single energy function, cross-checked against the analytic force.
 
 Units
 -----
-The code works in an "Angstrom - Kelvin - atomic mass unit" system:
+The code works in atomic units:
 
 * length in Angstrom
 * energy in Kelvin (i.e. energy / k_B, so k_B = 1 and T equals k_B * T)
 * mass in u
-
-Time is measured in the unit that follows from these three, with no
-conversion provided. All physical constants are passed around in a plain
-``atom_params`` dict (see ``ARGON``) so that no function hard-codes sigma,
-epsilon or the mass.
 """
 
 from __future__ import annotations
@@ -29,7 +24,6 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-# Float32 noise would dominate energy-drift measurements, so use float64.
 jax.config.update("jax_enable_x64", True)
 
 Array = jax.Array
