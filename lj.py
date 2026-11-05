@@ -16,9 +16,10 @@ The code works in an "Angstrom - Kelvin - atomic mass unit" system:
 * energy in Kelvin (i.e. energy / k_B, so k_B = 1 and T equals k_B * T)
 * mass in u
 
-The derived time unit is ``TIME_UNIT_PS`` (about 1.097 ps). All physical
-constants are passed around in a plain ``params`` dict (see ``ARGON``) so that
-no function hard-codes sigma, epsilon or the mass.
+Time is measured in the unit that follows from these three, with no
+conversion provided. All physical constants are passed around in a plain
+``params`` dict (see ``ARGON``) so that no function hard-codes sigma, epsilon
+or the mass.
 
 Functions marked ``TODO(you)`` are intentionally left unimplemented.
 """
@@ -45,14 +46,6 @@ ARGON: Params = {
     "epsilon": 119.8,  # Kelvin (epsilon / k_B), LJ energy scale
     "mass": 39.948,  # u
 }
-
-# sqrt(u * Angstrom^2 / (k_B * K)) in picoseconds.
-TIME_UNIT_PS: float = 1.09669
-
-
-def time_to_ps(t: Array | float) -> Array | float:
-    """Convert times from internal units to picoseconds."""
-    return t * TIME_UNIT_PS
 
 
 # --------------------------------------------------------------------------
@@ -193,7 +186,7 @@ def velocity_verlet_step(state: State, box: float, dt: float, params: Params) ->
         Current positions, velocities and forces F(t).
     box : float
     dt : float
-        Time step in internal units (see ``TIME_UNIT_PS``).
+        Time step in the time unit of the unit system (see module docstring).
     params : dict
 
     Returns
