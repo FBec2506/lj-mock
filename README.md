@@ -16,7 +16,6 @@ This repository acts as a code example from me, Felix Beckmann. It is strongly s
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-pytest
 jupyter lab demo.ipynb
 ```
 
