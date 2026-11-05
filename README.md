@@ -1,8 +1,8 @@
 # 1D Lennard-Jones molecular dynamics for argon (JAX)
 
-A small, readable MD code: identical uncharged particles on a periodic line, interacting through the 12-6 Lennard-Jones potential with argon parameters, integrated with velocity Verlet in an NVE ensemble. Forces come from automatic differentiation of the energy function and are cross-checked against the analytic force. The demo notebook compares each result with a theoretical expectation (equilibrium distance, oscillation frequency, energy drift scaling, pair distribution).
-
 This repository acts as a code example from me, Felix Beckmann. It is strongly simplified and should be regarded as a finger exercise.
+
+A small, readable MD code: identical uncharged particles on a periodic line, interacting through the 12-6 Lennard-Jones potential with argon parameters, integrated with velocity Verlet in an NVE ensemble. Forces come from automatic differentiation of the energy function and are cross-checked against the analytic force. The demo notebook compares each result with a theoretical expectation (equilibrium distance, oscillation frequency, energy drift scaling, pair distribution).
 
 ## Files
 | File | Content                                                             |
